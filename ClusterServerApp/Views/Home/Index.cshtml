@@ -1,0 +1,40 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="progress">
+    <div class="progress-bar" id="progress_bar" role="progressbar"
+         aria-valuemin="0" aria-valuemax="100" style="width:0%">
+    </div>
+</div>
+
+@section scripts{
+<script src="~/Scripts/jquery.signalR-2.2.2.js"></script>
+<script src="/signalr/js"></script>
+<script type="text/javascript">
+    var hub = $.connection.appHub;
+
+    hub.client.showProgress = function (prog) {
+        $("#progress_bar").css({ 'width': prog + '%' });
+    };
+
+    $.connection.hub.start();
+
+    $(document).ready(function () {
+
+        $.ajax({
+            method: 'GET',
+            url: '/Home/CalculateMatrix',
+            dataType: 'json',
+            success: function (res) {
+                alert(res);
+            },
+            error: function (res) {
+                alert(res.statusText);
+            }
+        });
+    });
+</script>
+}
