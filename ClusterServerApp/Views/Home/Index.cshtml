@@ -4,9 +4,32 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
-<div class="progress">
-    <div class="progress-bar" id="progress_bar" role="progressbar"
-         aria-valuemin="0" aria-valuemax="100" style="width:0%">
+<div class="row" id="main_container" style="margin-top: 15px;">
+    <div class="col-sm-8 col-sm-push-2 well">
+        <div class="row">
+            <div class="col-sm-6" style="padding: 5px;">
+                <button type="button" class="btn btn-block btn-success calculate_btn">Calculate</button>
+            </div>
+            <div class="col-sm-6" style="padding: 5px;">
+                <button type="button" disabled="disabled" class="btn btn-block btn-danger cancel_btn">Cancel</button>
+            </div>
+        </div>
+        <pre style="width: 100%; height: 300px; overflow-x:scroll; overflow-y:scroll">
+            
+        </pre>
+        <div style="display: none;">
+            <div class="progress">
+                <div class="progress-bar" role="progressbar" aria-valuenow="70"
+                     aria-valuemin="0" aria-valuemax="100" style="width:0">
+                </div>
+            </div>
+            <p>Sending data to server...</p>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-sm-6 col-sm-push-3">
+        <button type="button" id="add_tab" class="btn btn-default">Add new tab</button>
     </div>
 </div>
 
@@ -14,26 +37,176 @@
 <script src="~/Scripts/jquery.signalR-2.2.2.js"></script>
 <script src="/signalr/js"></script>
 <script type="text/javascript">
+
+    function guid() {
+        function s4() {
+            return Math.floor((1 + Math.random()) * 0x10000)
+              .toString(16)
+              .substring(1);
+        }
+        return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
+          s4() + '-' + s4() + s4() + s4();
+    }
+
     var hub = $.connection.appHub;
 
-    hub.client.showProgress = function (prog) {
-        $("#progress_bar").css({ 'width': prog + '%' });
+    hub.client.showProgress = function (guid, progress, url) {
+        var btn = $('#' + guid).first();
+        var pb = btn.parent().parent().next().next().children().first().children().first();
+        var p = btn.parent().parent().next().next().children().last();
+
+        pb.css({ 'width': progress + '%' });
+        if (pb.width() == pb.parent().width()) {
+            p.html("Receiving result...");
+        }
+        else {
+            p.html("Running algorithm at " + url + " ...");
+        }
     };
 
     $.connection.hub.start();
 
-    $(document).ready(function () {
+    function sendRequest(_guid, canSend) {
 
-        $.ajax({
-            method: 'GET',
-            url: '/Home/CalculateMatrix',
-            dataType: 'json',
-            success: function (res) {
-                alert(res);
-            },
-            error: function (res) {
-                alert(res.statusText);
-            }
+
+        var btn = $('#' + _guid).first();
+        var pb = btn.parent().parent().next().next().children().first().children().first();
+        var p = btn.parent().parent().next().next().children().last();
+
+        if (canSend) {
+            $.ajax({
+                method: 'GET',
+                url: '/Home/CalculateMatrix?guid=' + _guid,
+                headers: {
+                    Authorization: 'Bearer ' + getCookie('access_token')
+                },
+                dataType: 'json',
+                success: function (res) {
+                    pb.css({ 'width': '0%' });
+                    p.html("Sending data to server...");
+                    p.parent().css({ 'display': 'none' });
+                    btn.parent().parent().children().last().children().first().attr('disabled', 'disabled');
+
+                    if (Array.isArray(res)) {
+                        var result = "";
+                        for (var i = 0; i < res.length; ++i) {
+                            result += res[i];
+                            result += "<br/>";
+                        }
+                    }
+                    else {
+                        alert(res);
+                    }
+
+                    p.parent().parent().children().first().next().html(result);
+                },
+                error: function (res) {
+                    alert(res.statusCode + " " + res.statusText);
+                    pb.css({ 'width': '0%' });
+                    p.html("Sending data to server...");
+                    p.parent().css({ 'display': 'none' });
+                    btn.parent().parent().children().last().children().first().attr('disabled', 'disabled');
+                }
+            });
+        }
+        else {
+            alert("All servers are busy. Please try later");
+            pb.css({ 'width': '0%' });
+            p.html("Sending data to server...");
+            p.parent().css({ 'display': 'none' });
+            btn.parent().parent().children().last().children().first().attr('disabled', 'disabled');
+        }
+    }
+
+    function bindEvents() {
+        $(".calculate_btn").off('click').click(function () {
+
+            var self = this;
+
+            $(this).parent().parent().children().last().children().first().prop('disabled', false);
+            $(this).parent().parent().next().next().css({ 'display': 'block' });
+
+            $.ajax({
+                method: 'GET',
+                url: '/api/Db/GetConfig',
+                headers: {
+                    Authorization: 'Bearer ' + getCookie('access_token')
+                },
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                success: function (res) {
+                    res = JSON.parse(res);
+                    var _guid = guid();
+                    $(self).attr('id', _guid);
+
+                    if (res.ProcessesRunning < res.MaxProcesses) {
+                        sendRequest(_guid, true);
+                    }
+                    else {
+                        sendRequest(_guid, false);
+                    }
+                },
+                error: function (res) {
+                    alert(res.statusCode + " " + res.statusText);
+                }
+            });
+        });
+
+        $(".cancel_btn").off('click').click(function () {
+
+            var guid = $(this).parent().parent().children().first().children().first().attr('id');
+            var p = $(this).parent().parent().next().children().last();
+            var pb = $(this).parent().parent().next().children().first().children().first();
+
+            $.ajax({
+                method: 'GET',
+                url: '/api/Db/DeleteProcessGuid?guid=' + guid,
+                headers: {
+                    Authorization: 'Bearer ' + getCookie('access_token')
+                },
+                success: function (res) {
+                    p.html("Sending data to server...");
+                    pb.width(0);
+                    pb.parent().parent().css({ 'display': 'block' });
+                    $(this).attr('disabled', true);
+                },
+                error: function (res) {
+                    alert(res.statusCode + " " + res.statusText);
+                }
+            });
+        });
+    }
+
+    function getDivForTab() {
+        return `<div class="col-sm-8 col-sm-push-2 well">
+        <div class="row">
+            <div class="col-sm-6" style="padding: 5px;">
+                <button type="button" class="btn btn-block btn-success calculate_btn">Calculate</button>
+            </div>
+            <div class="col-sm-6" style="padding: 5px;">
+                <button type="button" disabled="disabled" class="btn btn-block btn-danger cancel_btn">Cancel</button>
+            </div>
+        </div>
+        <pre style="width: 100%; height: 300px; overflow-x:scroll; overflow-y:scroll">
+
+        </pre>
+        <div style="display: none;">
+            <div class="progress">
+                <div class="progress-bar" role="progressbar" aria-valuenow="70"
+                     aria-valuemin="0" aria-valuemax="100" style="width:0">
+                </div>
+            </div>
+            <p>Sending data to server...</p>
+        </div>
+    </div>`;
+    }
+
+    $(document).ready(function () {
+        bindEvents();
+
+        $("#add_tab").click(function () {
+            $("#main_container").append(getDivForTab());
+            bindEvents();
         });
     });
 </script>

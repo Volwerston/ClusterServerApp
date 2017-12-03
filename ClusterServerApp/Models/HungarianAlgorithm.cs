@@ -17,6 +17,8 @@ C# hungarian algorithm implementation
 using ClusterServerApp;
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Web;
 
 namespace GraphAlgorithms
 {
@@ -27,32 +29,24 @@ namespace GraphAlgorithms
     {
         private readonly int[,] _costMatrix;
         private int _inf;
-        private int _n; //number of elements
-        private int[] _lx; //labels for workers
-        private int[] _ly; //labels for jobs 
+        private int _n;
+        private int[] _lx;
+        private int[] _ly;
         private bool[] _s;
         private bool[] _t;
-        private int[] _matchX; //vertex matched with x
-        private int[] _matchY; //vertex matched with y
+        private int[] _matchX;
+        private int[] _matchY;
         private int _maxMatch;
         private int[] _slack;
         private int[] _slackx;
-        private int[] _prev; //memorizing paths
+        private int[] _prev;
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="costMatrix"></param>
         public HungarianAlgorithm(int[,] costMatrix)
         {
             _costMatrix = costMatrix;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <returns></returns>
-        public int[] Run()
+        public int[] Run(string _guid, string token, HttpRequestBase request)
         {
             _n = _costMatrix.GetLength(0);
 
@@ -86,6 +80,8 @@ namespace GraphAlgorithms
             int size = (_n - _maxMatch) / 100;
             int offset = 0;
 
+            int dbRequestRate = (_n - _maxMatch) / 10;
+
             int currProgress = 0;
 
             while (_maxMatch != _n)
@@ -95,19 +91,25 @@ namespace GraphAlgorithms
                 if(offset % size == 0)
                 {
                     ++currProgress;
-                    new AppHub().ShowProgress(currProgress);
+                    new AppHub().ShowProgress(_guid, currProgress, request.Url.Scheme + "://" + request.Url.Authority + request.ApplicationPath.TrimEnd('/'));
+                }
+
+                if(offset % dbRequestRate == 0)
+                {
+                    if (this.ProcessCanceled(_guid, token, request))
+                    {
+                        return null;
+                    }
                 }
 
                 q.Clear();
 
                 InitSt();
 
-                //parameters for keeping the position of root node and two other nodes
                 var root = 0;
                 int x;
                 var y = 0;
 
-                //find root of the tree
                 for (x = 0; x < _n; x++)
                 {
                     if (_matchX[x] != -1) continue;
@@ -119,14 +121,12 @@ namespace GraphAlgorithms
                     break;
                 }
 
-                //init slack
                 for (var i = 0; i < _n; i++)
                 {
                     _slack[i] = _costMatrix[root, i] - _lx[root] - _ly[i];
                     _slackx[i] = root;
                 }
 
-                //finding augmenting path
                 while (true)
                 {
                     while (q.Count != 0)
@@ -136,26 +136,22 @@ namespace GraphAlgorithms
                         for (y = 0; y < _n; y++)
                         {
                             if (_costMatrix[x, y] != lxx + _ly[y] || _t[y]) continue;
-                            if (_matchY[y] == -1) break; //augmenting path found!
+                            if (_matchY[y] == -1) break;
                             _t[y] = true;
                             q.Enqueue(_matchY[y]);
 
                             AddToTree(_matchY[y], x);
                         }
-                        if (y < _n) break; //augmenting path found!
+                        if (y < _n) break;
                     }
-                    if (y < _n) break; //augmenting path found!
-                    UpdateLabels(); //augmenting path not found, update labels
+                    if (y < _n) break;
+                    UpdateLabels();
 
                     for (y = 0; y < _n; y++)
                     {
-                        //in this cycle we add edges that were added to the equality graph as a
-                        //result of improving the labeling, we add edge (slackx[y], y) to the tree if
-                        //and only if !T[y] &&  slack[y] == 0, also with this edge we add another one
-                        //(y, yx[y]) or augment the matching, if y was exposed
 
                         if (_t[y] || _slack[y] != 0) continue;
-                        if (_matchY[y] == -1) //found exposed vertex-augmenting path exists
+                        if (_matchY[y] == -1)
                         {
                             x = _slackx[y];
                             break;
@@ -170,7 +166,6 @@ namespace GraphAlgorithms
 
                 _maxMatch++;
 
-                //inverse edges along the augmenting path
                 int ty;
                 for (int cx = x, cy = y; cx != -2; cx = _prev[cx], cy = ty)
                 {
@@ -184,6 +179,30 @@ namespace GraphAlgorithms
 
             return _matchX;
         }
+
+
+
+        private bool ProcessCanceled(string _guid, string token, HttpRequestBase request)
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                client.BaseAddress = new Uri(request.Url.Scheme + "://" + request.Url.Authority + request.ApplicationPath.TrimEnd('/'));
+                client.DefaultRequestHeaders.Clear();
+                client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                HttpResponseMessage msg = client.GetAsync("/api/Db/ProcessCanceled?guid=" + _guid).Result;
+
+                if (msg.IsSuccessStatusCode)
+                {
+                    return msg.Content.ReadAsAsync<bool>().Result;
+                }
+                else
+                {
+                    throw new Exception("Database is in invalid state");
+                }
+            }
+        }
+    
 
         private void InitMatches()
         {
@@ -246,10 +265,7 @@ namespace GraphAlgorithms
 
         private void AddToTree(int x, int prevx)
         {
-            //x-current vertex, prevx-vertex from x before x in the alternating path,
-            //so we are adding edges (prevx, matchX[x]), (matchX[x],x)
-
-            _s[x] = true; //adding x to S
+            _s[x] = true; 
             _prev[x] = prevx;
 
             var lxx = _lx[x];

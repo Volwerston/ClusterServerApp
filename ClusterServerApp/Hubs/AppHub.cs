@@ -8,10 +8,10 @@ namespace ClusterServerApp
 {
     public class AppHub : Hub
     {
-        public void ShowProgress(int percent)
+        public void ShowProgress(string guid, int progress, string url)
         {
             var context = GlobalHost.ConnectionManager.GetHubContext<AppHub>();
-            context.Clients.All.showProgress(percent);
+            context.Clients.All.showProgress(guid, progress, url);
         }
     }
 }

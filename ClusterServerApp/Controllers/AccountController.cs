@@ -16,6 +16,7 @@ using Microsoft.Owin.Security.OAuth;
 using ClusterServerApp.Models;
 using ClusterServerApp.Providers;
 using ClusterServerApp.Results;
+using System.Data.SqlClient;
 
 namespace ClusterServerApp.Controllers
 {
@@ -316,6 +317,32 @@ namespace ClusterServerApp.Controllers
             }
 
             return logins;
+        }
+
+        [Authorize]
+        [HttpGet]
+        [Route("IsAdmin")]
+        public IHttpActionResult IsAdmin(string email)
+        {
+            try
+            {
+                using (SqlConnection con = new SqlConnection(System.Web.Configuration.WebConfigurationManager.ConnectionStrings["DBCS"].ConnectionString))
+                {
+                    using (SqlCommand cmd = new SqlCommand("exec spIsUserAdmin @mail", con))
+                    {
+                        cmd.Parameters.AddWithValue("@mail", email);
+
+                        con.Open();
+                        bool res = (int)cmd.ExecuteScalar() > 0;
+
+                        return Ok(res);
+                    }
+                }
+            }
+            catch(Exception e)
+            {
+                return InternalServerError(e);
+            }
         }
 
         // POST api/Account/Register

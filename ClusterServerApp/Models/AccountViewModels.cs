@@ -3,7 +3,11 @@ using System.Collections.Generic;
 
 namespace ClusterServerApp.Models
 {
-    // Models returned by AccountController actions.
+    public class UserLoginViewModel
+    {
+        public string Email { get; set; }
+        public string Password { get; set; }
+    }
 
     public class ExternalLoginViewModel
     {

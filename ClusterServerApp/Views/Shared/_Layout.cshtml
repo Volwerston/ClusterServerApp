@@ -19,9 +19,10 @@
                 @Html.ActionLink("Application name", "Index", "Home", new { area = "" }, new { @class = "navbar-brand" })
             </div>
             <div class="navbar-collapse collapse">
-                <ul class="nav navbar-nav">
-                    <li>@Html.ActionLink("Home", "Index", "Home", new { area = "" }, null)</li>
-                    <li>@Html.ActionLink("API", "Index", "Help", new { area = "" }, null)</li>
+                <ul class="nav navbar-nav" id="admin_container">
+                </ul>
+                <ul class="nav navbar-nav navbar-right">
+                    <li><a href="#" id="sign_out"><span class="glyphicon glyphicon-log-in"></span> Log out</a></li>
                 </ul>
             </div>
         </div>
@@ -29,13 +30,73 @@
     <div class="container body-content">
         @RenderBody()
         <hr />
-        <footer>
-            <p>&copy; @DateTime.Now.Year - My ASP.NET Application</p>
-        </footer>
     </div>
 
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/bootstrap")
+    <script type="text/javascript">
+
+        function getCookie(cname) {
+            var name = cname + "=";
+            var decodedCookie = decodeURIComponent(document.cookie);
+            var ca = decodedCookie.split(';');
+            for (var i = 0; i < ca.length; i++) {
+                var c = ca[i];
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+                if (c.indexOf(name) == 0) {
+                    return c.substring(name.length, c.length);
+                }
+            }
+            return "";
+        }
+
+        $(document).ready(function () {
+
+            $.ajax({
+                method: 'GET',
+                url: '/api/Account/IsAdmin?email=' + '@User.Identity.Name',
+                headers: {
+                    Authorization: 'Bearer ' + getCookie('access_token')
+                },
+                dataType: 'json',
+                success: function (res) {
+                    if (res) {
+                        $("#admin_container").append('<li><a href="/Home/AdminPage">Admin</a></li>');
+                    }
+                }
+            });
+
+            $("#sign_out").click(function () {
+                $.ajax({
+                    method: "POST",
+                    url: '/api/Account/Logout',
+                    contentType: "application/json; charset=utf-8",
+                    headers: {
+                        Authorization: 'Bearer ' + getCookie('access_token')
+                    },
+                    success: function () {
+
+                        var cookies = document.cookie.split(";");
+
+                        for (var i = 0; i < cookies.length; i++) {
+                            var cookie = cookies[i];
+                            var eqPos = cookie.indexOf("=");
+                            var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                        }
+
+                        window.location.href = '@Url.Action("SignIn", "Home")';
+                    },
+                    error: function (res) {
+                        alert(res.responseText);
+                    }
+                });
+
+            });
+        });
+    </script>
     @RenderSection("scripts", required: false)
 </body>
 </html>
